@@ -47,49 +47,78 @@ class Booking(db.Model):
 def seed_initial_data(db):
     """
     Seeds initial demo data ONLY if DB is empty.
+    Safe to run multiple times (idempotent enough for demo).
     """
-    if Film.query.first():
+    # If we already have films and halls, assume seeded.
+    if Film.query.first() and Hall.query.first() and Screening.query.first():
         return
 
     # Films
-    films = [
-        Film(
+    films_data = [
+        dict(
             title="Interstellar",
             duration_min=169,
             age_rating="PG-13",
             description="A team travels through a wormhole in space in an attempt to ensure humanity's survival."
         ),
-        Film(
+        dict(
             title="Spirited Away",
             duration_min=125,
             age_rating="PG",
             description="A young girl enters a mysterious world ruled by gods, witches, and spirits."
         ),
-        Film(
+        dict(
             title="The Dark Knight",
             duration_min=152,
             age_rating="PG-13",
             description="Batman faces the Joker, a criminal mastermind who plunges Gotham into chaos."
         )
     ]
-    db.session.add_all(films)
+
+    for f in films_data:
+        if not Film.query.filter_by(title=f["title"]).first():
+            db.session.add(Film(**f))
 
     # Halls
-    halls = [
-        Hall(name="Hall A", rows=6, seats_per_row=10),   # 60 seats
-        Hall(name="Hall B", rows=5, seats_per_row=8),    # 40 seats
-        Hall(name="Hall C", rows=4, seats_per_row=12),   # 48 seats
+    halls_data = [
+        dict(name="Hall A", rows=6, seats_per_row=10),
+        dict(name="Hall B", rows=5, seats_per_row=8),
+        dict(name="Hall C", rows=4, seats_per_row=12),
     ]
-    db.session.add_all(halls)
+
+    for h in halls_data:
+        if not Hall.query.filter_by(name=h["name"]).first():
+            db.session.add(Hall(**h))
+
     db.session.commit()
 
-    # Screenings (today/tomorrow demo schedule)
+    # Screenings
+    from datetime import datetime
     now = datetime.utcnow()
-    screenings = [
-        Screening(film_id=films[0].id, hall_id=halls[0].id, start_time=now.replace(hour=14, minute=0, second=0, microsecond=0)),
-        Screening(film_id=films[0].id, hall_id=halls[1].id, start_time=now.replace(hour=19, minute=30, second=0, microsecond=0)),
-        Screening(film_id=films[1].id, hall_id=halls[2].id, start_time=now.replace(hour=16, minute=15, second=0, microsecond=0)),
-        Screening(film_id=films[2].id, hall_id=halls[0].id, start_time=now.replace(hour=21, minute=0, second=0, microsecond=0)),
+
+    # Refresh objects
+    films = Film.query.all()
+    halls = Hall.query.all()
+
+    # helper lookups
+    film_by_title = {f.title: f for f in films}
+    hall_by_name = {h.name: h for h in halls}
+
+    screenings_data = [
+        ("Interstellar", "Hall A", now.replace(hour=14, minute=0, second=0, microsecond=0)),
+        ("Interstellar", "Hall B", now.replace(hour=19, minute=30, second=0, microsecond=0)),
+        ("Spirited Away", "Hall C", now.replace(hour=16, minute=15, second=0, microsecond=0)),
+        ("The Dark Knight", "Hall A", now.replace(hour=21, minute=0, second=0, microsecond=0)),
     ]
-    db.session.add_all(screenings)
+
+    for film_title, hall_name, start_time in screenings_data:
+        film = film_by_title.get(film_title)
+        hall = hall_by_name.get(hall_name)
+        if not film or not hall:
+            continue
+
+        exists = Screening.query.filter_by(film_id=film.id, hall_id=hall.id, start_time=start_time).first()
+        if not exists:
+            db.session.add(Screening(film_id=film.id, hall_id=hall.id, start_time=start_time))
+
     db.session.commit()

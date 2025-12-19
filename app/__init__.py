@@ -13,9 +13,10 @@ def create_app():
     from app.routes import main_bp
     app.register_blueprint(main_bp)
 
+    # Важно: НЕ делаем seed здесь, потому что gunicorn запускает несколько воркеров
+    # и seed будет выполняться параллельно -> конфликт UNIQUE.
     with app.app_context():
         from app import models
         db.create_all()
-        models.seed_initial_data(db)
 
     return app
