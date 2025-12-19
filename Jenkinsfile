@@ -4,10 +4,12 @@ pipeline {
   options {
     timestamps()
     disableConcurrentBuilds()
+    skipDefaultCheckout(true)
   }
 
   environment {
     APP_URL = "http://127.0.0.1:5000"
+    COMPOSE_FILE = "docker-compose.yml"
   }
 
   stages {
@@ -15,16 +17,27 @@ pipeline {
       steps {
         cleanWs()
         checkout scm
+        sh '''
+          set -e
+          echo "WORKSPACE = $WORKSPACE"
+          pwd
+          ls -la
+          echo "Listing compose file:"
+          ls -la "$COMPOSE_FILE"
+        '''
       }
     }
 
     stage('Build & Deploy (Docker Compose)') {
       steps {
-        sh '''
-          set -e
-          docker compose down || true
-          docker compose up -d --build
-        '''
+        dir("${WORKSPACE}") {
+          sh '''
+            set -e
+            echo "Running docker compose in: $(pwd)"
+            docker compose -f "$COMPOSE_FILE" down || true
+            docker compose -f "$COMPOSE_FILE" up -d --build
+          '''
+        }
       }
     }
 
@@ -42,8 +55,8 @@ pipeline {
             sleep 2
           done
           echo "APP did not become ready"
-          docker ps
-          docker compose logs --tail=80
+          docker ps || true
+          docker compose -f "$COMPOSE_FILE" logs --tail=120 || true
           exit 1
         '''
       }
@@ -55,7 +68,7 @@ pipeline {
       sh 'docker ps || true'
     }
     failure {
-      sh 'docker compose logs --tail=120 || true'
+      sh 'docker compose -f docker-compose.yml logs --tail=200 || true'
     }
   }
 }
